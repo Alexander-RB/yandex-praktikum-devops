@@ -1,0 +1,4 @@
+pymongo
+flask
+APScheduler
+requests

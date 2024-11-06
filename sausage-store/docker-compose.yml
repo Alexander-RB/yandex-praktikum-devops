@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  backend-green:
+    image: ${CI_REGISTRY_IMAGE}/sausage-backend:${VERSION}
+    environment: 
+      VIRTUAL_HOST: "backend"
+      VIRTUAL_PORT: "8080"
+      REPORT_PATH: ${REPORT_PATH}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATA_MONGODB_URI: ${REPORTS_MONGODB_URI}
+      # SPRING_FLYWAY_BASELINE-ON-MIGRATE: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped  
+    networks:
+      - sausage-store
+    
+
+  backend-blue:
+    image: ${CI_REGISTRY_IMAGE}/sausage-backend:${VERSION}
+    environment: 
+      VIRTUAL_HOST: "backend"
+      VIRTUAL_PORT: "8080"
+      REPORT_PATH: ${REPORT_PATH}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATA_MONGODB_URI: ${REPORTS_MONGODB_URI}
+      # SPRING_FLYWAY_BASELINE-ON-MIGRATE: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped 
+    networks:
+      - sausage-store
+
+  backend-report:
+    image: ${CI_REGISTRY_IMAGE}/sausage-backend-report:${VERSION}
+    container_name: sausage-store-backend-report
+    restart: always
+    environment:
+      PORT: 8080
+      SPRING_DATA_MONGODB_URI: ${REPORTS_MONGODB_URI}
+    networks:
+      - sausage-store
+
+  frontend:
+    image: ${CI_REGISTRY_IMAGE}/sausage-frontend:${VERSION}
+    container_name: sausage-store-frontend
+    restart: always
+    environment:
+      DEFAULT_HOST: "backend"
+    ports:
+      - "80:80"
+    networks:
+      - sausage-store
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+networks:
+  sausage-store:

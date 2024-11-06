@@ -1,0 +1,83 @@
+global:
+  backendName: sausage-backend
+  backendPort: 8080
+
+backend:
+  name: sausage-backend
+  revisionHistoryLimit: 12
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 20%
+  image: gitlab.praktikum-services.ru:5050/std-029-26/sausage-store/sausage-backend:1.0.1601251
+    # name: "sausage-backend"
+    # tag: "1.0.131247"
+  containerPort: 8080
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m" 
+  livenessProbe:
+    httpGet:
+      path: /actuator/health
+      port: 8080
+    initialDelaySeconds: 15
+    periodSeconds: 30
+    timeoutSeconds: 2
+    failureThreshold: 6
+  vpa:
+    updateMode: "Auto"
+    resources:
+      minAllowed:
+        cpu: 250m
+        memory: 64Mi
+      maxAllowed:
+        cpu: 1
+        memory: 500Mi
+      
+backend-report:
+  name: sausage-backend-report
+  revisionHistoryLimit: 12
+  strategy: Recreate
+  image:  gitlab.praktikum-services.ru:5050/std-029-26/sausage-store/sausage-backend-report:1.0.1601251
+  hpa:
+    resources:
+      minReplicas: 2
+      maxReplicas: 5
+      averageUtilization: 75
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 15
+    periodSeconds: 30
+    timeoutSeconds: 2
+    failureThreshold: 6
+
+frontend:
+  name: sausage-store-frontend
+  fqdn: "birichevskiy-alexander-029.k8s.praktikum-services.tech"
+  revisionHistoryLimit: 12
+  port: 80
+  replicas: 1
+  strategy: Recreate
+  image:  gitlab.praktikum-services.ru:5050/std-029-26/sausage-store/sausage-frontend:1.0.1601251
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "100m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m" 

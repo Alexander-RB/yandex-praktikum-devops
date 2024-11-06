@@ -1,0 +1,38 @@
+[Unit]
+Description=Sausage Store Backend Service
+After=network.target
+
+[Service]
+User=backend
+Group=backend
+
+WorkingDirectory=/var/sausage-store/
+Environment=JAVA_HOME=/usr/lib/jvm/java-16-openjdk-amd64/
+Environment=LOG_PATH=/var/sausage-store/
+Environment=REPORT_PATH=/var/sausage-store/reports/
+
+Environment=PSQL_HOST="%PSQL_HOST%"
+Environment=PSQL_PORT="%PSQL_PORT%"
+Environment=PSQL_DBNAME="%PSQL_DBNAME%"
+Environment=PSQL_USER="%PSQL_USER%"
+Environment=PSQL_PASSWORD="%PSQL_PASSWORD%"
+
+# Параметры подключения к БД можно указать с помощью переменных окружения SPRING
+Environment=SPRING_DATASOURCE_URL="jdbc:postgresql://${PSQL_HOST}:${PSQL_PORT}/${PSQL_DBNAME}?ssl=true&sslrootcert=/app/YandexInternalRootCA.crt"
+Environment=SPRING_DATASOURCE_USERNAME="${PSQL_USER}"
+Environment=SPRING_DATASOURCE_PASSWORD="${PSQL_PASSWORD}"
+
+# Переменные для поключения к mongodb
+Environment=MONGO_USER="%MONGO_USER%"
+Environment=MONGO_PASSWORD="%MONGO_PASSWORD%"
+Environment=MONGO_HOST="%MONGO_HOST%"
+Environment=MONGO_DATABASE="%MONGO_DATABASE%"
+
+Environment=SPRING_DATA_MONGODB_URI="mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:27018/${MONGO_DATABASE}?tls=true"
+
+ExecStart=/usr/lib/jvm/java-16-openjdk-amd64/bin/java -jar /opt/sausage-store/bin/sausage-store-backend.jar
+StandardOutput=append:/opt/log/sausage-store-backend.log
+StandardError=append:/opt/log/sausage-store-backend.log
+
+[Install]
+WantedBy=multi-user.target

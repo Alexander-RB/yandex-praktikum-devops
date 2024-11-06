@@ -1,0 +1,31 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: alertmanager
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 1m
+    route:
+       group_wait: 10s
+       group_interval: 30s
+       repeat_interval: 30m
+       receiver: "telegram"
+       routes:
+         - receiver: "telegram"
+           group_wait: 10s
+           match_re:
+             severity: critical|warning
+           continue: true
+    receivers:
+     - name: "telegram"
+       telegram_configs:
+         - send_resolved: true
+           api_url: '{{ .Values.telegram_api_url }}'
+           bot_token: '{{ .Values.telegram_bot_token }}'
+           chat_id: {{ .Values.telegram_chat_id }}
+           message: "std-029-26 {{ "{{" }} range .Alerts {{ "}}" }}{{ "{{" }} .Labels.severity {{ "}}" }}\n{{ "{{" }} .Annotations.sender }}\n{{ "{{" }} .Annotations.summary }}\n{{ "{{" }} .Annotations.description }}\n{{ "{{" }} end {{ "}}" }}"

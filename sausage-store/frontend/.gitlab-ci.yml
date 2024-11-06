@@ -1,0 +1,129 @@
+cache:
+  paths:
+    - "frontend/dist/frontend"
+  
+
+variables:
+  VERSION: 1.0.${CI_PIPELINE_ID}
+
+
+stages:
+  - build
+  - test
+  - release
+  - notify
+  - deploy
+
+
+build-frontend-image-job:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    entrypoint: [""]
+  # переменные CI_REGISTRY_USER, CI_REGISTRY_PASSWORD, CI_REGISTRY генерятся Гитлабом, их задавать не надо
+  script:
+    - echo "test"
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}/frontend"
+      --dockerfile "${CI_PROJECT_DIR}/frontend/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}/sausage-frontend:$CI_COMMIT_SHA"
+      --build-arg VERSION=$VERSION
+      --cache=true 
+
+
+build-frontend-code-job:
+  stage: build
+  cache:
+    policy: pull-push
+    unprotect: false
+    untracked: false
+    when: on_success
+    paths:
+      - ".npm/"
+  script:        
+    - cd frontend
+    - npm install
+    - npm run build
+  artifacts:
+    paths:
+      - frontend/dist/frontend
+
+
+sonarqube-frontend-sast:
+  stage: test
+  when: on_success
+  dependencies:
+    - build-frontend-code-job
+  image: 
+    name: sonarsource/sonar-scanner-cli:5.0.1
+  script:
+    - cd frontend
+    - sonar-scanner -Dsonar.projectKey=${SONAR_PROJECT_KEY_FRONT} -Dsonar.sources=. -Dsonar.projectName=${SONAR_PROJECT_NAME_FRONT} -Dsonar.host.url=${SONARQUBE_URL} -Dsonar.login=${SONAR_LOGIN}
+
+
+telegram-notification-frontend:
+  stage: notify
+  dependencies:
+    - sonarqube-frontend-sast
+  when: on_success
+  variables:
+    ARTIFACT_URL: "$CI_PROJECT_URL/-/jobs/artifacts/$CI_COMMIT_SHA/download?job=build-frontend-code-job"
+  only:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /send notification/
+  script:
+    - echo "$ARTIFACT_URL"
+    - curl -X POST -H 'Content-Type:application/json' --data '{"chat_id":'"$TG_CHAT_ID"', "text":"Александр Биричевский успешно собрал frontend. Ссылка на артефакт:'"$ARTIFACT_URL"'"}' https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage
+
+
+release-frontend-image:
+  stage: release
+  needs:
+    - build-frontend-image-job
+  variables:
+    GIT_STRATEGY: none
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [ "" ]
+  cache: [ ]
+  before_script:
+    - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - crane tag $CI_REGISTRY_IMAGE/sausage-frontend:$CI_COMMIT_SHA $VERSION
+    - crane tag $CI_REGISTRY_IMAGE/sausage-frontend:$CI_COMMIT_SHA latest
+
+
+upload-frontend-release:
+  stage: release
+  needs:
+    - build-frontend-code-job
+    - sonarqube-frontend-sast
+  script:
+    - cd frontend/dist
+    - tar czvf sausage-store-${VERSION}.tar.gz frontend
+    - curl -v -u "${NEXUS_REPO_USER}:${NEXUS_REPO_PASS}" --upload-file sausage-store-${VERSION}.tar.gz ${NEXUS_REPO_URL}repository/${NEXUS_REPO_FRONTEND_NAME}/${VERSION}/sausage-store-${VERSION}.tar.gz
+
+
+deploy-frontend:
+  stage: deploy
+  needs:
+    - release-frontend-image
+  image: docker:24.0.7-alpine3.19
+  environment:
+    name: production/frontend
+  when: manual
+  before_script:
+    - apk add docker-cli-compose openssh-client bash
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 600 ~/.ssh
+    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - docker context create remote --description "remote ssh" --docker "host=ssh://${DEV_USER}@${DEV_HOST}"
+  script:
+    - echo "VERSION=${VERSION}" >> deploy.env
+    - echo "REPORTS_MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:27018/${MONGO_DATABASE}?tls=true" >> deploy.env
+    - echo "REPORT_PATH=/var/www-data/htdocs" >> deploy.env
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker --context remote compose --env-file deploy.env up frontend -d --pull "always" --force-recreate 

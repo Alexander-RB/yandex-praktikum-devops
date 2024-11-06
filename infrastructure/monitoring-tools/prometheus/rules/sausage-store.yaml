@@ -1,0 +1,42 @@
+---
+groups:
+  - name: Sausage store rules
+    rules:
+    - alert: InstanceDown
+      expr: up{app="sausage-backend"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        project: "sausage_store"
+        component: "Backend"
+      annotations:
+          summary: "InstanceDown {{ $labels.instance }}"
+          description: "{{ $labels.instance }} down!"
+    - alert: Code500
+      expr: http_server_requests_seconds_count{status="500", app="sausage-backend"} > 0
+      labels:
+        severity: critical
+        project: "sausage_store"
+        component: "Backend"
+      annotations:
+          summary: "InstanceDown {{ $labels.instance }}"
+          description: "{{ $labels.instance }} down!"
+    - alert: More then 100ms latency
+      expr: histogram_quantile(0.95, rate(http_server_requests_seconds_bucket{status=~"2..",method="POST",uri="/api/orders"}[5m]) > 0.1)
+      labels:
+        severity: critical
+        project: "sausage_store"
+        component: "Backend"
+      annotations:
+          summary: "High request latency on {{ $labels.instance }}"
+          description: "{{ $labels.instance }} has a request latency above 0,1s (current value: {{ $value }}s)"
+    - alert: error CODE (3xx,4xx,5xx)
+      expr: rate(http_server_requests_seconds_count{uri="/actuator/prometheus", status!~"2.."}[1m]) > 0
+      labels:
+        severity: critical
+        project: "sausage_store"
+        component: "Backend"
+      annotations:
+        summary: "Error code (3xx,4xx,5xx) on {{ $labels.instance }}"
+        description: "{{ $labels.instance }} has Error code (3xx,4xx,5xx)"
+

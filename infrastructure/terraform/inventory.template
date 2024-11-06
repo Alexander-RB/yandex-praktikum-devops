@@ -1,0 +1,13 @@
+---
+all:
+  children:
+    frontend:
+      hosts:
+        ${frontend_public_ip}:
+          ansible_user: ansible
+    backend:
+      hosts:
+        ${backend_public_ip}:
+          ansible_user: ansible
+  vars:
+    ansible_connection: ssh

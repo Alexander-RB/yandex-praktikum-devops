@@ -1,0 +1,85 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  revisionHistoryLimit: 12
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 20%
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - image: gitlab.praktikum-services.ru:5050/std-029-26/sausage-store/sausage-backend:latest
+        name: backend
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"  
+        env:
+          - name: VAULT_HOST
+            valueFrom:
+              secretKeyRef:
+                name: vault
+                key: vault_host
+          - name: VAULT_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: vault
+                key: vault_token
+          - name: SPRING_DATASOURCE_URL
+            valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: psql_url
+          - name: SPRING_DATASOURCE_USERNAME
+            valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: psql_user
+          - name: SPRING_DATASOURCE_PASSWORD
+            valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: psql_password
+        ports:
+          - name: backend
+            containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 2
+          failureThreshold: 6
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                   - key: app
+                     operator: In
+                     values:
+                     - backend
+                topologyKey: "kubernetes.io/hostname"
+      imagePullSecrets:
+      - name: docker-config-secret

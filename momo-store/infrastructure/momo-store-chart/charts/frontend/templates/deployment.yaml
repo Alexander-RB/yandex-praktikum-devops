@@ -1,0 +1,61 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .Chart.Name }}-{{ .Release.Name }}"
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    app: "{{ .Values.name }}"
+    app.kubernetes.io/name: momo-frontend
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+    app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
+    app.kubernetes.io/managed-by: "{{ .Release.Service }}"
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: momo-store 
+    env: test
+spec:
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: "{{ .Values.name }}"
+  template:
+    metadata:
+      labels:
+        app: "{{ .Values.name }}"
+    spec:
+      containers:
+      - name: "{{ .Values.name }}"
+        image: "{{ .Values.global.imageRegistry }}/{{ .Values.image.name }}:{{ .Values.image.tag }}"
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODE_ENV
+          value: "test"
+        - name: VUE_APP_API_URL
+          value: "http://momo-backend:8081"
+        resources:
+          requests:
+            memory: {{ .Values.resources.requests.memory }}
+            cpu: {{ .Values.resources.requests.cpu }}
+          limits:
+            memory: {{ .Values.resources.limits.memory }}
+            cpu: {{ .Values.resources.limits.cpu }}  
+        ports:
+        - containerPort: {{ .Values.port }}
+        volumeMounts:
+          - name: nginx-conf
+            mountPath: /etc/nginx/conf.d/default.conf
+            subPath: nginx.conf
+            readOnly: true
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: nginx-conf-{{ .Release.Name }}
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+      imagePullSecrets:
+        - name: docker-config-secret

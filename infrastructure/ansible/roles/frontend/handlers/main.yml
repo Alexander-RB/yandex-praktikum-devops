@@ -1,0 +1,10 @@
+---
+- name: Reload systemd
+  systemd:
+    daemon_reload: true
+
+- name: Restart frontend
+  service:
+    name: sausage-store-frontend
+    enabled: true
+...

@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-conf-{{ .Release.Name }}
+  namespace: "{{ .Release.Namespace }}"
+data:
+  nginx.conf: |
+    server {
+
+      listen {{ .Values.port }};
+
+      location / {
+        root   /usr/share/nginx/html;
+        index  index.html;
+        try_files $uri $uri/ /index.html;
+      }
+
+      location /api {
+          proxy_pass http://{{ .Values.global.backendName }}:{{ .Values.global.backendPort | int }};
+      }
+    }

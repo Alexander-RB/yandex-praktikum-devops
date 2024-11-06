@@ -1,0 +1,6 @@
+apiVersion: v2
+name: backend
+description: A Helm chart backend app for K8s
+type: application
+version: 0.1.1
+appVersion: "1.0.1553631"

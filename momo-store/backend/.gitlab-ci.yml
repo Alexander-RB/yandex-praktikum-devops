@@ -1,0 +1,107 @@
+include:
+  - template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Container-Scanning.gitlab-ci.yml
+
+variables:
+  VERSION: 1.0.${CI_PIPELINE_ID}
+  IMAGE_NAME: "${CI_REGISTRY_IMAGE}/momo-store-backend:$CI_COMMIT_SHA"
+
+stages:
+  - pre-build
+  - build
+  - test
+  - release
+  - deploy
+
+secret_detection:
+  stage: pre-build
+  variables:
+    SECRET_DETECTION_HISTORIC_SCAN: "true"
+    GIT_STRATEGY: "clone"
+  allow_failure: true
+  script:
+    - apk add jq
+    - /analyzer run
+    - exit $(eval "cat gl-secret-detection-report.json | jq --raw-output '.vulnerabilities | length'")
+  artifacts:
+    when: always
+    paths:
+      - gl-secret-detection-report.json
+
+sast:
+  stage: pre-build
+  variables:
+    SCAN_KUBERNETES_MANIFESTS: "true"
+    KUBESEC_HELM_CHARTS_PATH: "./infrastructure/momo-store-chart"
+    SAST_EXCLUDED_ANALYZERS: bandit, eslint, nodejs-scan
+  artifacts:
+    paths:
+      - ${CI_JOB_NAME}.json
+  after_script:
+    - mv gl-sast-report.json ${CI_JOB_NAME}.json
+
+trivy-sca:
+  stage: pre-build
+  allow_failure: true
+  image:
+    name: aquasec/trivy:0.57.0
+    entrypoint: [""]
+  script:
+    - trivy fs -f json --output trivy-sca.json .
+  artifacts:
+    paths:
+      - trivy-sca.json
+  rules:
+    - if: $CI_COMMIT_BRANCH
+
+build-backend-image-job:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    entrypoint: [""]
+  # переменные CI_REGISTRY_USER, CI_REGISTRY_PASSWORD, CI_REGISTRY генерятся Гитлабом, их задавать не надо
+  script:
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}/backend"
+      --dockerfile "${CI_PROJECT_DIR}/backend/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}/momo-store-backend:$CI_COMMIT_SHA"
+      --build-arg VERSION=$VERSION
+      --cache=true 
+
+container_scanning:
+  variables:
+    GIT_STRATEGY: "clone"
+    CS_DOCKERFILE_PATH: "./backend/Dockerfile"
+  needs: 
+  - build-backend-image-job
+
+release-backend-image:
+  variables:
+    GIT_STRATEGY: none
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [ "" ]
+  cache: [ ]
+  stage: release
+  needs:
+    - build-backend-image-job
+  before_script:
+    - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - crane tag $CI_REGISTRY_IMAGE/momo-store-backend:$CI_COMMIT_SHA $VERSION
+    - crane tag $CI_REGISTRY_IMAGE/momo-store-backend:$CI_COMMIT_SHA latest
+
+deploy-to-k8s:
+  stage: deploy
+  image: alpine/helm:3.16.2
+  needs:
+    - release-backend-image
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$KUBE_CONFIG" | base64 -d > ~/.kube/config
+  script:
+    - cd infrastructure/momo-store-chart
+    - helm upgrade --dependency-update --install --atomic -n momo-store momo-store . --set backend.image.tag=$VERSION --reuse-values
+    - rm ~/.kube/config
+  when: manual

@@ -1,0 +1,64 @@
+---
+
+- name: Add NodeJS key
+  apt_key:
+    url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
+    id: 9FD3B784BC1C6FC31A8A0A1C1655A0AB68576280
+    state: present
+
+- name: Add NodeJS repo
+  apt_repository:
+    repo: "deb https://deb.nodesource.com/node_{{ node_version | default(16) }}.x focal main"
+    state: present
+    update_cache: yes
+
+- name: Install NodeJS
+  apt:
+    pkg:
+      - nodejs 
+    state: present
+
+- name: Install http-server
+  npm:
+    name: http-server
+    global: yes
+
+- name: Add frontend service user
+  user:
+    name: "{{ frontend_user }}"
+    create_home: no 
+    shell: /sbin/nologin
+    
+- name: Create directory dist/frontend
+  file: 
+    path: "{{ frontend_path }}"
+    state: directory
+    owner: "{{ frontend_user }}"
+    group: "{{ frontend_user }}"
+    mode: 0775
+    recurse: yes
+
+- name: Download front from Nexus
+  get_url:
+    url: "{{ nexus_url }}-frontend/{{ frontend_version }}/sausage-store-{{ frontend_version }}.tar.gz"
+    dest: /var/tmp
+    username: "{{ nexus_user }}"
+    password: "{{ nexus_password }}"
+    mode: 0777
+    timeout: 5
+
+- name: Unarchive frontend
+  unarchive:
+    src: "/var/tmp/sausage-store-{{ frontend_version }}.tar.gz"
+    dest: "{{ frontend_path }}"
+    copy: no
+
+- name: Template for sausage-store frontend
+  template:
+    src: sausage-store-frontend.service.j2
+    dest: /etc/systemd/system/sausage-store-frontend.service
+  notify: 
+    - Reload systemd
+    - Restart frontend
+  tags: ['copy-template']
+...

@@ -1,0 +1,15 @@
+---
+- name: Play for backend
+  hosts: backend
+  roles:
+    - backend
+  vars_files:
+    - ./group_vars/backend.yaml
+
+- name: Play for frontend
+  gather_facts: false
+  hosts: frontend
+  roles:
+    - frontend
+  vars_files:
+    - ./group_vars/frontend.yaml

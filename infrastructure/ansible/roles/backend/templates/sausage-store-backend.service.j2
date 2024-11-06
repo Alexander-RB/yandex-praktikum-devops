@@ -1,0 +1,16 @@
+[Unit]
+Description=Sausage-store
+After=remote-fs.target nss-user-lookup.target
+
+[Service]
+User={{ backend_user }}
+Environment=LOG_PATH=/
+Environment=REPORT_PATH=/var/www-data/htdocs/
+StandartOutput=file:{{ backend_path }}/log/sausage-store.log
+StandartError=file:{{ backend_path }}/log/sausage-store.log
+ExecStart=java -jar {{ backend_path }}sausage-store-backend.jar
+Restart=on-failure
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,78 @@
+include:
+  - template: Security/SAST.gitlab-ci.yml
+
+variables:
+  VERSION: 1.0.${CI_PIPELINE_ID}
+  REPORT_PORT: 8080
+
+stages:
+  - build
+  - test
+  - release
+  - deploy
+
+build-backend-report-job:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    entrypoint: [""]
+  script:
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}/backend-report"
+      --dockerfile "${CI_PROJECT_DIR}/backend-report/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}/sausage-backend-report:$CI_COMMIT_SHA"
+      --build-arg VERSION=$VERSION
+      --cache=true 
+
+semgrep-sast:
+  variables:
+    SAST_EXCLUDED_PATHS: venv/
+    SAST_EXCLUDED_ANALYZERS: "eslint, nodejs-scan"
+  artifacts:
+    paths:
+      - "${CI_JOB_NAME}.json"
+
+release-backend-report-image:
+  variables:
+    GIT_STRATEGY: none
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [ "" ]
+  cache: [ ]
+  stage: release
+  needs:
+     - build-backend-report-job
+    #  - sonarqube-backend-sast
+     - semgrep-sast
+  before_script:
+    - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - crane tag $CI_REGISTRY_IMAGE/sausage-backend-report:$CI_COMMIT_SHA $VERSION
+    - crane tag $CI_REGISTRY_IMAGE/sausage-backend-report:$CI_COMMIT_SHA latest
+
+
+deploy-backend-report:
+  stage: deploy
+  needs:
+    - release-backend-report-image
+  image: docker:24.0.7-alpine3.19
+  environment:
+    name: production/backend-report
+  when: manual
+  before_script:
+    - apk add openssh-client bash docker
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY"| tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 600 ~/.ssh
+    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - ssh-add -L
+    - docker context create remote --description "remote ssh" --docker "host=ssh://${DEV_USER}@${DEV_HOST}"
+  script:
+    - echo "VERSION=${VERSION}" >> deploy.env
+    - echo "PORT=8080" >> deploy.env
+    - echo "REPORT_PATH=/var/www-data/htdocs" >> deploy.env
+    - echo "REPORTS_MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@${MONGO_HOST}:27018/${MONGO_DATABASE}?tls=true" >> deploy.env
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker --context remote compose --env-file deploy.env up backend-report -d --pull "always" --force-recreate 

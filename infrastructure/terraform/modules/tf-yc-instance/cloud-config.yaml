@@ -1,0 +1,11 @@
+#cloud-config
+users:
+  - name: ansible
+    shell: /bin/bash
+    groups: sudo
+    ssh_import_id: None
+    lock_passwd: False
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    homedir: /home/ansible
+    ssh-authorized-keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEu26uvT26Ms5sbR2+XIrbpSnX3MKcdCXuyM5MxTun5i

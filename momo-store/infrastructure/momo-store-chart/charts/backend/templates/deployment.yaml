@@ -1,0 +1,72 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .Chart.Name }}-{{ .Release.Name }}"
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    app: "{{ .Values.name }}"
+    app.kubernetes.io/name: momo-store-backend
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+    app.kubernetes.io/version: "{{ .Chart.AppVersion }}"
+    app.kubernetes.io/managed-by: "{{ .Release.Service }}"
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: momo-store
+    env: test
+spec:
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ .Values.strategy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.strategy.rollingUpdate.maxSurge }}
+  selector:
+    matchLabels:
+      app: "{{ .Values.name }}"
+  template:
+    metadata:
+      labels:
+        app: "{{ .Values.name }}"
+      # annotations:
+      #   prometheus.io/path: /actuator/prometheus
+      #   prometheus.io/port: "8080"
+      #   prometheus.io/scrape: "true"
+    spec:
+      containers:
+      - image: "{{ .Values.global.imageRegistry }}/{{ .Values.image.name }}:{{ .Values.image.tag }}"
+        name: "{{ .Values.name }}"
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            memory: {{ .Values.resources.requests.memory }}
+            cpu: {{ .Values.resources.requests.cpu }}
+          limits:
+            memory: {{ .Values.resources.limits.memory }}
+            cpu: {{ .Values.resources.limits.cpu }}
+        ports:
+          - name: "{{ .Values.name }}"
+            containerPort: {{ .Values.containerPort }}
+        # livenessProbe:
+        #   httpGet:
+        #     path: {{ .Values.livenessProbe.httpGet.path }}
+        #     port: {{ .Values.livenessProbe.httpGet.port }}
+        #   initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+        #   periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+        #   timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+        #   failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                   - key: app
+                     operator: In
+                     values:
+                     - momo-backend
+                topologyKey: "kubernetes.io/hostname"
+      imagePullSecrets:
+      - name: docker-config-secret

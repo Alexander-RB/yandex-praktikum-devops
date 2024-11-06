@@ -1,0 +1,11 @@
+[Unit]
+Description=Sausage store frontend service
+
+[Service]
+User={{ frontend_user }}
+StandartOutput=file:{{ frontend_path }}/out-front.log
+StandartError=file:{{ frontend_path }}/out-front.log
+ExecStart=http-server {{ frontend_path }}/frontend -p 8080 --proxy http://{{ hostvars[groups['backend'][0]]['ansible_facts']['default_ipv4']['address'] }}:8080
+
+[Install]
+WantedBy=multi-user.target
